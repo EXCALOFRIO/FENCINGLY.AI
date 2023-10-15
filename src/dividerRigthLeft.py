@@ -1,7 +1,7 @@
 import json
 
 # Nombre del archivo JSON de entrada
-input_file = "epee_data.json"
+input_file = "json/epee/epee_data.json"
 
 # Cargamos los datos desde el archivo JSON utilizando UTF-8
 with open(input_file, "r", encoding="utf-8") as file:

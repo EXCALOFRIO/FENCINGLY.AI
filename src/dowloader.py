@@ -3,7 +3,7 @@ import requests
 import os
 
 # Nombre del archivo JSON con los enlaces de video
-json_file = "foil_right_links copy.json"
+json_file = "json/foil/foil_right_links copy.json"
 
 # Cargamos los enlaces desde el archivo JSON
 with open(json_file, "r") as file:
