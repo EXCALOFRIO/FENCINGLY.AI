@@ -1,6 +1,6 @@
 # FencingAI - Fencing Arbitration Project with AI
 
-[README](README) Versión Española.
+[README](README.md) Versión Española.
 
 This project focuses on developing an artificial intelligence capable of arbitrating fencing videos. The AI will be trained to recognize and evaluate fencing movements, techniques, and rules, allowing for an objective assessment of actions in the videos.
 

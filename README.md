@@ -1,6 +1,6 @@
 # FencingAI - Proyecto de Arbitraje de Esgrima con IA
 
-[README](README_EN) English version.
+[README](README_EN.md) English version.
 
 Este proyecto se centra en el desarrollo de una inteligencia artificial capaz de arbitrar videos de esgrima. La IA se entrenará para reconocer y evaluar movimientos, técnicas y reglas de esgrima, permitiendo una evaluación objetiva de las acciones en los videos.
 
