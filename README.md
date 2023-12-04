@@ -35,12 +35,14 @@ El proyecto se basa en diversas tecnologías y herramientas, que incluyen, entre
 
 - Al usar OpenPose, se detectaron personas o artefactos irrelevantes. Se implementó un filtro basado en la dispersión de puntos para eliminar detecciones inapropiadas.
 
-[![Texto alternativo](enlace_a_miniatura_del_video)](https://github.com/EXCALOFRIO/FENCINGLY.AI/blob/main/outputs/V0_V1.avi)
+ <img src="https://github.com/EXCALOFRIO/FENCINGLY.AI/blob/main/outputs/V0_V1.gif?raw=true" width="600">
 
 #### Problema 2: Detecciones con Número Insuficiente de Puntos
 
 - OpenPose a veces generaba detecciones con pocos puntos. Se aplicó un filtro para descartar detecciones con menos de 15 puntos, mejorando la precisión.
 
+ <img src="https://github.com/EXCALOFRIO/FENCINGLY.AI/blob/main/outputs/V1_V2.gif?raw=true" width="600">
+ 
 ##### Ambos filtros mejoraron significativamente la calidad de las detecciones en el proyecto.
 
 ## Licencia
