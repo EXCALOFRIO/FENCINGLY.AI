@@ -29,6 +29,20 @@ El proyecto se basa en diversas tecnologías y herramientas, que incluyen, entre
 - Procesamiento de imágenes y video para el análisis de fotogramas.
 - Aprendizaje automático para la evaluación de las acciones y el arbitraje.
 
+## Problemas y Soluciones
+
+#### Problema 1: Detecciones Erróneas de Personas o Artefactos
+
+- Al usar OpenPose, se detectaron personas o artefactos irrelevantes. Se implementó un filtro basado en la dispersión de puntos para eliminar detecciones inapropiadas.
+
+[![Texto alternativo](enlace_a_miniatura_del_video)](https://github.com/EXCALOFRIO/FENCINGLY.AI/blob/main/outputs/V0_V1.avi)
+
+#### Problema 2: Detecciones con Número Insuficiente de Puntos
+
+- OpenPose a veces generaba detecciones con pocos puntos. Se aplicó un filtro para descartar detecciones con menos de 15 puntos, mejorando la precisión.
+
+##### Ambos filtros mejoraron significativamente la calidad de las detecciones en el proyecto.
+
 ## Licencia
 
 Este proyecto se distribuye bajo la licencia [Apache License Version 2.0, January 2004](LICENSE). Consulta el archivo `LICENSE` para obtener más detalles.
