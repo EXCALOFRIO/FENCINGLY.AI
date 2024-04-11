@@ -1,0 +1,4 @@
+# ENTRENAMIENTO FINAL SIN TRANSFORMAR DATOS
+Final Training: 100%|██████████| 200/200 [28:20<00:00,  8.50s/epoch]
+Accuracy on test data: 0.5645021645021645
+Accuracy on train data: 0.9856247132589081
