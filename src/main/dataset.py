@@ -7,6 +7,7 @@ import torch
 from torch.utils.data import Dataset
 import sys
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 
 class PosesDataset(Dataset):
     def __init__(self, directory, num_frames=100):
@@ -72,6 +73,12 @@ def cargar_y_preparar_datos(izquierda_dir, derecha_dir, porcentaje_entrenamiento
     
     # Preparar datos
     datos_entrenamiento, datos_validacion, datos_prueba, etiquetas_entrenamiento, etiquetas_validacion, etiquetas_prueba = preparar_datos(datos_entrenamiento_izquierda, datos_entrenamiento_derecha, datos_validacion_izquierda, datos_validacion_derecha, datos_prueba_izquierda, datos_prueba_derecha)
+    
+    # Normalizar datos
+    max_valor = np.max(datos_entrenamiento)  # Calcular el máximo valor en los datos de entrenamiento
+    datos_entrenamiento /= max_valor
+    datos_validacion /= max_valor
+    datos_prueba /= max_valor
     
     # Convertir a tensores
     datos_entrenamiento, datos_validacion, datos_prueba, etiquetas_entrenamiento, etiquetas_validacion, etiquetas_prueba = convertir_a_tensores(datos_entrenamiento, datos_validacion, datos_prueba, etiquetas_entrenamiento, etiquetas_validacion, etiquetas_prueba)

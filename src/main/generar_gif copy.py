@@ -19,7 +19,7 @@ def dibujar_pose(pose, conexiones, ax):
         x, y = punto[:2]
         confianza = punto[2]
 
-        if confianza > 0:
+        if confianza > 0.2:
             ax.plot(x, y, 'ro')
 
     for conexion in conexiones:
@@ -32,22 +32,20 @@ def dibujar_pose(pose, conexiones, ax):
         if len(punto_1) < 3 or len(punto_2) < 3:
             continue  # Skip if the points do not have enough elements
 
-        if punto_1[2] > 0 and punto_2[2] > 0:
+        if punto_1[2] > 0.2 and punto_2[2] > 0.2:
             x = [punto_1[0], punto_2[0]]
             y = [punto_1[1], punto_2[1]]
             ax.add_line(Line2D(x, y, linewidth=8, color='blue'))
 
 def visualizar_tensor_poses(tensor_poses, ax):
     ax.clear()
-    ax.set_xlim(0.53, -0.53)
-    ax.set_ylim(0.53, -0.53)
+    ax.invert_yaxis()  # Invertir el eje y para que la parte superior sea 0
 
     for persona_poses in tensor_poses:
         for i, persona in enumerate(persona_poses):
             keypoints = persona[:75]  # Tomar solo los primeros 75 keypoints
             dibujar_pose([(keypoints[j], keypoints[j + 1], keypoints[j + 2]) for j in range(0, len(keypoints), 3)],
                           conexiones, ax)
-
 
 def gif(poses):
     fig, ax = plt.subplots(figsize=(10, 8))
@@ -62,7 +60,7 @@ def gif(poses):
 
     timestamp = str(int(time.time()))  # Obtiene la marca de tiempo actual en segundos
     gif_path = f'poses_animation_{timestamp}.gif'  # Nombre de archivo único con marca de tiempo
-    imageio.mimsave(gif_path, frames, fps=5)
+    imageio.mimsave(gif_path, frames, fps=2)
     plt.close(fig)  # Cerrar la figura para liberar memoria
 
     return gif_path
