@@ -15,32 +15,33 @@ conexiones = [
 def dibujar_pose(pose, conexiones, ax):
     for i, punto in enumerate(pose):
         if len(punto) < 3:
-            continue  # Skip if the point does not have enough elements
+            continue  # Saltar si el punto no tiene suficientes elementos
         x, y = punto[:2]
         confianza = punto[2]
 
         if confianza > 0:
-            ax.plot(x, y, 'ro')
+            ax.plot(x, y, 'ro', markersize=8)
 
     for conexion in conexiones:
         if any(index >= len(pose) for index in conexion):
-            continue  # Skip if the connection has an invalid index
+            continue  # Saltar si la conexión tiene un índice inválido
 
         punto_1 = pose[conexion[0]]
         punto_2 = pose[conexion[1]]
 
         if len(punto_1) < 3 or len(punto_2) < 3:
-            continue  # Skip if the points do not have enough elements
+            continue  # Saltar si los puntos no tienen suficientes elementos
 
         if punto_1[2] > 0 and punto_2[2] > 0:
             x = [punto_1[0], punto_2[0]]
             y = [punto_1[1], punto_2[1]]
-            ax.add_line(Line2D(x, y, linewidth=8, color='blue'))
+            ax.add_line(Line2D(x, y, linewidth=3, color='blue'))
 
 def visualizar_tensor_poses(tensor_poses, ax):
     ax.clear()
-    ax.set_xlim(0.53, -0.53)
-    ax.set_ylim(0.53, -0.53)
+    ax.set_xlim(0, 1)  # Establecer límites en el eje x
+    ax.set_ylim(0, 1)  # Establecer límites en el eje y
+    ax.invert_yaxis()  # Invertir el eje y para que la parte superior sea 0
 
     for persona_poses in tensor_poses:
         for i, persona in enumerate(persona_poses):
