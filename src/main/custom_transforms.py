@@ -148,7 +148,7 @@ def flip_poses(datos_entrenamiento, etiquetas_entrenamiento):
     num_poses, num_puntos, _ = datos_entrenamiento.size()
     
     # Aplicar el flip horizontal a las coordenadas x de cada punto de la pose
-    datos_entrenamiento_trans[:, 0::3] = 1 - datos_entrenamiento_trans[:, 0::3]
+    datos_entrenamiento_trans[:, :, 0::3] = 1 - datos_entrenamiento_trans[:, :, 0::3]
 
     # Devolver los datos de entrenamiento con flip aplicado y las etiquetas invertidas
     return datos_entrenamiento_trans, invertir_etiquetas(etiquetas_entrenamiento)
