@@ -109,7 +109,7 @@ def train_with_optuna(datos_entrenamiento, etiquetas_entrenamiento, datos_valida
 
             val_accuracy = val_correct / val_total
 
-            tqdm.write(f"Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_running_loss/train_total:.4f}, Train Acc: {train_accuracy:.4f}, Val Loss: {val_running_loss/val_total:.4f}, Val Acc: {val_accuracy:.4f}")
+            #tqdm.write(f"Epoch [{epoch+1}/{num_epochs}], Train Loss: {train_running_loss/train_total:.4f}, Train Acc: {train_accuracy:.4f}, Val Loss: {val_running_loss/val_total:.4f}, Val Acc: {val_accuracy:.4f}")
 
         return val_accuracy
 
@@ -119,24 +119,25 @@ def train_with_optuna(datos_entrenamiento, etiquetas_entrenamiento, datos_valida
     return study
 
 
-def train_final_model(train_loader, val_loader, study, num_epochs=20, batch_size=32):
+def train_final_model(datos_entrenamiento, etiquetas_entrenamiento, datos_validacion, etiquetas_validacion, study, num_epochs=20, batch_size=32):
     best_params = study.best_params
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    input_shape = datos_entrenamiento.shape[-1]
     
-    model = Modelo(input_size=train_loader.dataset.tensors[0].shape[-1]*2, **best_params).to(device)
+    model = Modelo(input_size=input_shape*2, **best_params).to(device)
     
     criterion = nn.BCELoss()
     optimizer = optim.Adam(model.parameters(), lr=best_params['learning_rate'])
+
+    train_loader, val_loader = crear_dataloader(datos_entrenamiento, etiquetas_entrenamiento, datos_validacion, etiquetas_validacion, batch_size)
     
     for epoch in tqdm(range(num_epochs), desc="Final Training", unit="epoch"):
-        # Inicializar los valores de loss y accuracy para el epoch actual
-        epoch_train_loss = 0.0
-        epoch_train_correct = 0
-        epoch_train_total = 0
-        
-        # Entrenamiento del modelo
-        model.train()  # Activar modo de entrenamiento
+        # Entrenamiento
+        model.train()
+        train_loss = 0.0
+        train_correct = 0
+        train_total = 0
         for datos, etiquetas in train_loader:
             datos, etiquetas = datos.to(device), etiquetas.to(device)
             datos_flat = datos.view(datos.shape[0], datos.shape[1], -1)
@@ -146,61 +147,35 @@ def train_final_model(train_loader, val_loader, study, num_epochs=20, batch_size
             loss.backward()
             optimizer.step()
             
-            # Calcular el accuracy en este batch y acumularlo para el epoch
+            train_loss += loss.item() * datos.size(0)
             predicted = torch.round(outputs.squeeze())
-            epoch_train_correct += (predicted == etiquetas).sum().item()
-            epoch_train_total += etiquetas.size(0)
-            epoch_train_loss += loss.item()
-
-        # Calcular el accuracy y el loss promedio para el epoch de entrenamiento
-        epoch_train_accuracy = epoch_train_correct / epoch_train_total
-        epoch_train_loss /= len(train_loader)
+            train_correct += (predicted == etiquetas).sum().item()
+            train_total += etiquetas.size(0)
+            
+        train_loss /= train_total
+        train_accuracy = train_correct / train_total
         
-        # Evaluar el modelo en el conjunto de validación
-        model.eval()  # Activar modo de evaluación
-        epoch_val_loss = 0.0
-        epoch_val_correct = 0
-        epoch_val_total = 0
+        # Validación
+        model.eval()
+        val_loss = 0.0
+        val_correct = 0
+        val_total = 0
         with torch.no_grad():
-            for datos, etiquetas in val_loader:
-                datos, etiquetas = datos.to(device), etiquetas.to(device)
-                datos_flat = datos.view(datos.shape[0], datos.shape[1], -1)
-                outputs = model(datos_flat)
-                predicted = torch.round(outputs.squeeze())
-                epoch_val_correct += (predicted == etiquetas).sum().item()
-                epoch_val_total += etiquetas.size(0)
-                loss = criterion(outputs.squeeze(), etiquetas)
-                epoch_val_loss += loss.item()
-
-        # Calcular el accuracy y el loss promedio para el epoch de validación
-        epoch_val_accuracy = epoch_val_correct / epoch_val_total
-        epoch_val_loss /= len(val_loader)
+            for datos_val, etiquetas_val in val_loader:
+                datos_val, etiquetas_val = datos_val.to(device), etiquetas_val.to(device)
+                datos_val_flat = datos_val.view(datos_val.shape[0], datos_val.shape[1], -1)
+                outputs_val = model(datos_val_flat)
+                val_loss += criterion(outputs_val.squeeze(), etiquetas_val).item() * datos_val.size(0)
+                val_predicted = torch.round(outputs_val.squeeze())
+                val_correct += (val_predicted == etiquetas_val).sum().item()
+                val_total += etiquetas_val.size(0)
+                
+        val_loss /= val_total
+        val_accuracy = val_correct / val_total
         
-        # Mostrar los valores de loss y accuracy en el tqdm
-        tqdm.write(f"Epoch {epoch + 1}/{num_epochs}: "
-                   f"Train Loss: {epoch_train_loss:.4f}, Train Acc: {epoch_train_accuracy:.4f}, "
-                   f"Val Loss: {epoch_val_loss:.4f}, Val Acc: {epoch_val_accuracy:.4f}")
+        tqdm.write(f"Epoch {epoch+1}/{num_epochs}: Train Loss: {train_loss:.4f}, Train Acc: {train_accuracy:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_accuracy:.4f}")
 
-    # Mostrar mensaje de finalización del entrenamiento fuera del bucle de entrenamiento
-    tqdm.write("Final Training completed.")
-
-    # Evaluar el modelo final en el conjunto de validación
-    model.eval()
-    correct = 0
-    total = 0
-    with torch.no_grad():
-        for datos, etiquetas in val_loader:
-            datos, etiquetas = datos.to(device), etiquetas.to(device)
-            datos_flat = datos.view(datos.shape[0], datos.shape[1], -1)
-            outputs = model(datos_flat)
-            predicted = torch.round(outputs.squeeze())
-            correct += (predicted == etiquetas).sum().item()
-            total += etiquetas.size(0)
-
-    accuracy = correct / total
-    
-    return model, accuracy
-
+    return model
 
 def preparar_entrenamiento(datos_entrenamiento, etiquetas_entrenamiento, datos_validacion, etiquetas_validacion, batch_size):
     # Convertir los datos a tensores de PyTorch

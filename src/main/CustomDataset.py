@@ -1,6 +1,7 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
 from custom_transforms import transformacion_zoom, desplazar_posesX, desplazar_posesY, flip_poses
+import random
 
 class CustomDataset(Dataset):
     def __init__(self, datos, etiquetas, input_shape):
@@ -14,17 +15,19 @@ class CustomDataset(Dataset):
     def __getitem__(self, idx):
         datos = self.datos[idx]
         etiquetas = self.etiquetas[idx]
-        datos, etiquetas = transformar_datos(datos, etiquetas)
+        datos, etiquetas = self.transformar_datos(datos, etiquetas)  # Llamada a transformar_datos
         return datos, etiquetas
 
-def transformar_datos(datos, etiquetas):
-    # Aquí aplicamos todas las transformaciones necesarias
-    datos, etiquetas = transformacion_zoom(datos, etiquetas)
-    datos, etiquetas = desplazar_posesX(datos, etiquetas)
-    datos, etiquetas = desplazar_posesY(datos, etiquetas)
-    datos, etiquetas = flip_poses(datos, 1 - etiquetas)
+    def transformar_datos(self, datos, etiquetas):
+        # Lista de transformaciones disponibles
+        transformaciones = [transformacion_zoom, desplazar_posesX, desplazar_posesY, flip_poses]
 
-    return datos, etiquetas
+        # Aplicar transformaciones aleatorias
+        for transformacion in transformaciones:
+            if random.random() > 0.5:  # Probabilidad de aplicar la transformación: 50%
+                datos, etiquetas = transformacion(datos, etiquetas)
+
+        return datos, etiquetas
 
 # Función para crear los DataLoader
 def crear_dataloader(datos_entrenamiento, etiquetas_entrenamiento, datos_validacion, etiquetas_validacion, batch_size):
@@ -36,4 +39,3 @@ def crear_dataloader(datos_entrenamiento, etiquetas_entrenamiento, datos_validac
     val_loader = DataLoader(dataset_validacion, batch_size=batch_size)
 
     return train_loader, val_loader
-
