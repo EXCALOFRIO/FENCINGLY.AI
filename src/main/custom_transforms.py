@@ -150,8 +150,12 @@ def flip_poses(datos_entrenamiento, etiquetas_entrenamiento):
     # Aplicar el flip horizontal a las coordenadas x de cada punto de la pose
     datos_entrenamiento_trans[:, :, 0::3] = 1 - datos_entrenamiento_trans[:, :, 0::3]
 
+    # Cambiar el orden de las poses
+    datos_entrenamiento_trans = datos_entrenamiento_trans[:, [1, 0], :]
+    
     # Devolver los datos de entrenamiento con flip aplicado y las etiquetas invertidas
     return datos_entrenamiento_trans, invertir_etiquetas(etiquetas_entrenamiento)
+
 
 
 def invertir_etiquetas(etiquetas_entrenamiento):
