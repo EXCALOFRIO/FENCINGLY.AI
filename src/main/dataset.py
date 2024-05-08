@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 class PosesDataset(Dataset):
-    def __init__(self, directory, num_frames=100):
+    def __init__(self, directory, num_frames=66):
         self.data = self.load_data(directory, num_frames)
 
     def __len__(self):
@@ -19,7 +19,7 @@ class PosesDataset(Dataset):
     def __getitem__(self, idx):
         return torch.tensor(self.data[idx], dtype=torch.float32)
 
-    def load_data(self, directory, num_frames=100):
+    def load_data(self, directory, num_frames=66):
         data = []
         with ThreadPoolExecutor() as executor:
             for archivo_json in tqdm(os.listdir(directory), desc="Loading data"):

@@ -23,7 +23,7 @@ class CustomDataset(Dataset):
     def transformar_datos(self, datos, etiquetas):
         if self.entrenamiento:  # Solo aplicar transformaciones durante el entrenamiento
             # Lista de transformaciones disponibles
-            transformaciones = [transformacion_zoom, desplazar_posesX, desplazar_posesY, flip_poses]
+            transformaciones = [transformacion_zoom, desplazar_posesY, flip_poses]
 
             # Aplicar transformaciones aleatorias
             for transformacion in transformaciones:

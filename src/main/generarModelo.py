@@ -16,15 +16,11 @@ from CustomDataset import *
 import torch.nn.functional as F
 
 class Modelo(nn.Module):
-    def __init__(self, lstm_units, dropout_rate_1, dropout_rate_2, dense_units, learning_rate, kernel_regularizer, num_lstm_layers, conv2d_out_channels, conv2d_kernel_size, attention_num_heads):
+    def __init__(self, lstm_units, dropout_rate_1, dropout_rate_2, dense_units, learning_rate, kernel_regularizer, num_lstm_layers):
         super(Modelo, self).__init__()
-        self.conv2d_left = nn.Conv2d(1, conv2d_out_channels, kernel_size=(conv2d_kernel_size, 1), padding=(conv2d_kernel_size//2, 0))
-        self.conv2d_right = nn.Conv2d(1, conv2d_out_channels, kernel_size=(conv2d_kernel_size, 1), padding=(conv2d_kernel_size//2, 0))
-        self.lstm_left = nn.LSTM(100 * 75, lstm_units, batch_first=True, num_layers=num_lstm_layers, bidirectional=True)
-        self.lstm_right = nn.LSTM(100 * 75, lstm_units, batch_first=True, num_layers=num_lstm_layers, bidirectional=True)
+        self.lstm_left = nn.LSTM(75, lstm_units, batch_first=True, num_layers=num_lstm_layers, bidirectional=True)
+        self.lstm_right = nn.LSTM(75, lstm_units, batch_first=True, num_layers=num_lstm_layers, bidirectional=True)
         self.dropout1 = nn.Dropout(dropout_rate_1)
-        self.attention_left = nn.MultiheadAttention(lstm_units * 2, num_heads=attention_num_heads, batch_first=True)
-        self.attention_right = nn.MultiheadAttention(lstm_units * 2, num_heads=attention_num_heads, batch_first=True)
         self.lstm_combined = nn.LSTM(lstm_units * 4, lstm_units * 2, batch_first=True, num_layers=num_lstm_layers, bidirectional=True)
         self.dense1 = nn.Linear(lstm_units * 4, dense_units)
         self.relu = nn.ReLU()
@@ -35,46 +31,21 @@ class Modelo(nn.Module):
     def forward(self, x):
         # Verificar la forma de los datos de entrada
         assert x.dim() == 4, f"Expected input tensor to have 4 dimensions, but got {x.dim()}"
-        assert x.size(1) == 100, f"Expected input tensor to have 100 frames, but got {x.size(1)}"
         assert x.size(2) == 2, f"Expected input tensor to have 2 poses, but got {x.size(2)}"
         assert x.size(3) == 75, f"Expected input tensor to have 75 keypoints, but got {x.size(3)}"
 
         # Separar los datos del tirador izquierdo y derecho
-        left_data = x[:, :, 0, :].unsqueeze(1)
-        right_data = x[:, :, 1, :].unsqueeze(1)
-        #print("Left Data Shape:", left_data.shape)
-        #print("Right Data Shape:", right_data.shape)
+        left_data = x[:, :, 0, :]
+        right_data = x[:, :, 1, :]
 
-        # Aplicar convolución 2D y ReLU a cada tirador por separado
-        left_conv = F.relu(self.conv2d_left(left_data))
-        right_conv = F.relu(self.conv2d_right(right_data))
-        #print("Left Conv Output Shape:", left_conv.shape)
-        #print("Right Conv Output Shape:", right_conv.shape)
-
-        # Redimensionar los tensores para aplicar LSTM
-        left_conv = left_conv.permute(0, 3, 2, 1).contiguous().view(left_conv.size(0), -1, 100 * 75)
-        right_conv = right_conv.permute(0, 3, 2, 1).contiguous().view(right_conv.size(0), -1, 100 * 75)
-        #print("Left Conv Reshaped Shape:", left_conv.shape)
-        #print("Right Conv Reshaped Shape:", right_conv.shape)
-
-        left_lstm, _ = self.lstm_left(left_conv)
-        right_lstm, _ = self.lstm_right(right_conv)
-        #print("Left LSTM Output Shape:", left_lstm.shape)
-        #print("Right LSTM Output Shape:", right_lstm.shape)
-
-        # Aplicar atención temporal a cada tirador por separado
-        left_attention, _ = self.attention_left(left_lstm, left_lstm, left_lstm)
-        right_attention, _ = self.attention_right(right_lstm, right_lstm, right_lstm)
-        #print("Left attention:", left_attention.shape)
-        #print("Right attention:", right_attention.shape)
+        left_lstm, _ = self.lstm_left(left_data)
+        right_lstm, _ = self.lstm_right(right_data)
 
         # Concatenar las representaciones de ambos tiradores
-        combined = torch.cat((left_attention, right_attention), dim=2)
-        #print("Combined Shape:", combined.shape)
+        combined = torch.cat((left_lstm, right_lstm), dim=2)
 
         # Aplicar LSTM a la combinación de representaciones
         combined_lstm, _ = self.lstm_combined(combined)
-        #print("Combined LSTM Output Shape:", combined_lstm.shape)
 
         # Aplicar capas densas y funciones de activación
         x = self.dropout1(combined_lstm[:, -1, :])
@@ -85,7 +56,7 @@ class Modelo(nn.Module):
 
         return x
 
-def train_model(model, datos_entrenamiento, etiquetas_entrenamiento, hiperparametros, num_epochs, batch_size, patience=10, trial_number=None):
+def train_model(model, datos_entrenamiento, etiquetas_entrenamiento, hiperparametros, num_epochs, batch_size, patience=50, trial_number=None):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
 
@@ -187,7 +158,7 @@ def train_model(model, datos_entrenamiento, etiquetas_entrenamiento, hiperparame
     model.load_state_dict(best_model)
     return model, best_val_loss, best_val_accuracy
 
-def optimize_hyperparameters(datos_entrenamiento, etiquetas_entrenamiento, datos_validacion, etiquetas_validacion, hiperparametros_ranges, num_trials, num_epochs, batch_size, patience=10):
+def optimize_hyperparameters(datos_entrenamiento, etiquetas_entrenamiento, datos_validacion, etiquetas_validacion, hiperparametros_ranges, num_trials, num_epochs, batch_size, patience=50):
     def objective(trial):
         hiperparametros = {
             'learning_rate': trial.suggest_float('learning_rate', *hiperparametros_ranges['learning_rate']),
@@ -196,10 +167,7 @@ def optimize_hyperparameters(datos_entrenamiento, etiquetas_entrenamiento, datos
             'dropout_rate_1': trial.suggest_categorical('dropout_rate_1', hiperparametros_ranges['dropout_rate_1']),
             'dropout_rate_2': trial.suggest_categorical('dropout_rate_2', hiperparametros_ranges['dropout_rate_2']),
             'num_lstm_layers': trial.suggest_categorical('num_lstm_layers', hiperparametros_ranges['num_lstm_layers']),
-            'kernel_regularizer': trial.suggest_float('kernel_regularizer', *hiperparametros_ranges['kernel_regularizer']),
-            'conv2d_out_channels': trial.suggest_categorical('conv2d_out_channels', hiperparametros_ranges['conv2d_out_channels']),
-            'conv2d_kernel_size': trial.suggest_categorical('conv2d_kernel_size', hiperparametros_ranges['conv2d_kernel_size']),
-            'attention_num_heads': trial.suggest_categorical('attention_num_heads', hiperparametros_ranges['attention_num_heads']),
+            'kernel_regularizer': trial.suggest_float('kernel_regularizer', *hiperparametros_ranges['kernel_regularizer'])
         }
 
         model = Modelo(**hiperparametros)
