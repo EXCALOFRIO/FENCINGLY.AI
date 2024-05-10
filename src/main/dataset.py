@@ -2,24 +2,21 @@ import os
 import json
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
-from tqdm import tqdm
-import torch
-from torch.utils.data import Dataset
-import sys
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
+from tqdm import tqdm
+import tensorflow as tf
 
-class PosesDataset(Dataset):
-    def __init__(self, directory, num_frames=66):
+class PosesDataset:
+    def __init__(self, directory, num_frames=100):
         self.data = self.load_data(directory, num_frames)
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
-        return torch.tensor(self.data[idx], dtype=torch.float32)
+        return self.data[idx]
 
-    def load_data(self, directory, num_frames=66):
+    def load_data(self, directory, num_frames=100):
         data = []
         with ThreadPoolExecutor() as executor:
             for archivo_json in tqdm(os.listdir(directory), desc="Loading data"):
@@ -41,8 +38,9 @@ def cargar_datos(izquierda_dir, derecha_dir):
     return dataset_izquierda, dataset_derecha
     
 def dividir_datos_entrenamiento_validacion_prueba(dataset, porcentaje_entrenamiento, porcentaje_validacion, porcentaje_prueba):
-    datos_entrenamiento, datos_prueba = train_test_split(dataset.data, test_size=1 - porcentaje_entrenamiento)
-    datos_validacion, datos_prueba = train_test_split(datos_prueba, test_size=porcentaje_prueba / (porcentaje_validacion + porcentaje_prueba))
+    datos = np.array(dataset.data)
+    datos_entrenamiento, datos_prueba = train_test_split(datos, test_size=1 - porcentaje_entrenamiento, random_state=42)
+    datos_validacion, datos_prueba = train_test_split(datos_prueba, test_size=porcentaje_prueba / (porcentaje_validacion + porcentaje_prueba), random_state=42)
     return datos_entrenamiento, datos_validacion, datos_prueba
     
 def preparar_datos(datos_entrenamiento_izquierda, datos_entrenamiento_derecha, datos_validacion_izquierda, datos_validacion_derecha, datos_prueba_izquierda, datos_prueba_derecha):
@@ -55,12 +53,12 @@ def preparar_datos(datos_entrenamiento_izquierda, datos_entrenamiento_derecha, d
     return datos_entrenamiento, datos_validacion, datos_prueba, etiquetas_entrenamiento, etiquetas_validacion, etiquetas_prueba
     
 def convertir_a_tensores(datos_entrenamiento, datos_validacion, datos_prueba, etiquetas_entrenamiento, etiquetas_validacion, etiquetas_prueba):
-    datos_entrenamiento = torch.tensor(datos_entrenamiento, dtype=torch.float32)
-    datos_validacion = torch.tensor(datos_validacion, dtype=torch.float32)
-    datos_prueba = torch.tensor(datos_prueba, dtype=torch.float32)
-    etiquetas_entrenamiento = torch.tensor(etiquetas_entrenamiento, dtype=torch.float32)
-    etiquetas_validacion = torch.tensor(etiquetas_validacion, dtype=torch.float32)
-    etiquetas_prueba = torch.tensor(etiquetas_prueba, dtype=torch.float32)
+    datos_entrenamiento = tf.convert_to_tensor(datos_entrenamiento, dtype=tf.float32)
+    datos_validacion = tf.convert_to_tensor(datos_validacion, dtype=tf.float32)
+    datos_prueba = tf.convert_to_tensor(datos_prueba, dtype=tf.float32)
+    etiquetas_entrenamiento = tf.convert_to_tensor(etiquetas_entrenamiento, dtype=tf.float32)
+    etiquetas_validacion = tf.convert_to_tensor(etiquetas_validacion, dtype=tf.float32)
+    etiquetas_prueba = tf.convert_to_tensor(etiquetas_prueba, dtype=tf.float32)
     return datos_entrenamiento, datos_validacion, datos_prueba, etiquetas_entrenamiento, etiquetas_validacion, etiquetas_prueba
     
 def cargar_y_preparar_datos(izquierda_dir, derecha_dir, porcentaje_entrenamiento, porcentaje_validacion, porcentaje_prueba):
@@ -76,9 +74,9 @@ def cargar_y_preparar_datos(izquierda_dir, derecha_dir, porcentaje_entrenamiento
     
     # Normalizar datos
     max_valor = np.max(datos_entrenamiento)  # Calcular el máximo valor en los datos de entrenamiento
-    datos_entrenamiento /= max_valor
-    datos_validacion /= max_valor
-    datos_prueba /= max_valor
+    datos_entrenamiento = datos_entrenamiento / max_valor
+    datos_validacion = datos_validacion / max_valor
+    datos_prueba = datos_prueba / max_valor
     
     # Convertir a tensores
     datos_entrenamiento, datos_validacion, datos_prueba, etiquetas_entrenamiento, etiquetas_validacion, etiquetas_prueba = convertir_a_tensores(datos_entrenamiento, datos_validacion, datos_prueba, etiquetas_entrenamiento, etiquetas_validacion, etiquetas_prueba)

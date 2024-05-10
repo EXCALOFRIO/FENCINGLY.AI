@@ -1,188 +1,117 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
-from torch.utils.tensorboard import SummaryWriter
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, roc_auc_score
-import optuna
-from datetime import datetime
-import os
 import numpy as np
-from tqdm import tqdm
-from custom_transforms import transformacion_zoom, desplazar_posesX, desplazar_posesY, flip_poses
+import optuna
+import tensorflow as tf
+from sklearn.model_selection import train_test_split
 from CustomDataset import *
+import datetime
+import os
 
-import torch.nn.functional as F
-
-class Modelo(nn.Module):
-    def __init__(self, lstm_units, dropout_rate_1, dropout_rate_2, dense_units, learning_rate, kernel_regularizer, num_lstm_layers):
-        super(Modelo, self).__init__()
-        self.lstm_left = nn.LSTM(75, lstm_units, batch_first=True, num_layers=num_lstm_layers, bidirectional=True)
-        self.lstm_right = nn.LSTM(75, lstm_units, batch_first=True, num_layers=num_lstm_layers, bidirectional=True)
-        self.dropout1 = nn.Dropout(dropout_rate_1)
-        self.lstm_combined = nn.LSTM(lstm_units * 4, lstm_units * 2, batch_first=True, num_layers=num_lstm_layers, bidirectional=True)
-        self.dense1 = nn.Linear(lstm_units * 4, dense_units)
-        self.relu = nn.ReLU()
-        self.dropout2 = nn.Dropout(dropout_rate_2)
-        self.dense2 = nn.Linear(dense_units, 1)
-        self.sigmoid = nn.Sigmoid()
-
-    def forward(self, x):
-        # Verificar la forma de los datos de entrada
-        assert x.dim() == 4, f"Expected input tensor to have 4 dimensions, but got {x.dim()}"
-        assert x.size(2) == 2, f"Expected input tensor to have 2 poses, but got {x.size(2)}"
-        assert x.size(3) == 75, f"Expected input tensor to have 75 keypoints, but got {x.size(3)}"
-
-        # Separar los datos del tirador izquierdo y derecho
-        left_data = x[:, :, 0, :]
-        right_data = x[:, :, 1, :]
-
-        left_lstm, _ = self.lstm_left(left_data)
-        right_lstm, _ = self.lstm_right(right_data)
-
-        # Concatenar las representaciones de ambos tiradores
-        combined = torch.cat((left_lstm, right_lstm), dim=2)
-
-        # Aplicar LSTM a la combinación de representaciones
-        combined_lstm, _ = self.lstm_combined(combined)
-
-        # Aplicar capas densas y funciones de activación
-        x = self.dropout1(combined_lstm[:, -1, :])
-        x = self.relu(self.dense1(x))
-        x = self.dropout2(x)
-        x = self.dense2(x)
-        x = self.sigmoid(x)
-
-        return x
-
-def train_model(model, datos_entrenamiento, etiquetas_entrenamiento, hiperparametros, num_epochs, batch_size, patience=50, trial_number=None):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
-
-    # Dividir los datos en conjuntos de entrenamiento y validación
-    X_train, X_val, y_train, y_val = train_test_split(datos_entrenamiento, etiquetas_entrenamiento, test_size=0.2, random_state=42)
-
-    # Crear DataLoader personalizado para el conjunto de entrenamiento
-    train_loader, val_loader = crear_dataloader(X_train, y_train, X_val, y_val, batch_size)
-
-    criterion = nn.BCELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=hiperparametros['learning_rate'])
-
-    best_val_loss = float('inf')
-    best_val_accuracy = 0.0
-    epochs_without_improvement = 0
-    
-    # Crea un directorio para guardar los archivos de TensorBoard
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    tensorboard_dir = os.path.join("runs", f"{timestamp}_trial_{trial_number}")
-    os.makedirs(tensorboard_dir, exist_ok=True)
-    writer = SummaryWriter(tensorboard_dir)
-    pbar = tqdm(range(num_epochs), desc="Training", unit="epoch")
-
-    for epoch in pbar:
-        # Entrenamiento
-        model.train()
-        train_loss = 0.0
-        train_outputs = []
-        train_targets = []
-        for datos, etiquetas in train_loader:
-            datos, etiquetas = datos.to(device), etiquetas.to(device)
-            optimizer.zero_grad()
-            outputs = model(datos)
-            loss = criterion(outputs.squeeze(), etiquetas)
-            loss.backward()
-            optimizer.step()
-
-            train_loss += loss.item() * datos.size(0)
-            train_outputs.append(outputs.squeeze().detach().cpu().numpy())
-            train_targets.append(etiquetas.detach().cpu().numpy())
-
-        train_loss /= len(train_loader.dataset)
-        train_outputs = np.concatenate(train_outputs)
-        train_targets = np.concatenate(train_targets)
-        train_auc = roc_auc_score(train_targets, train_outputs)
-
-        # Registrar métricas en TensorBoard
-        writer.add_scalar("Loss/train", train_loss, epoch)
-        writer.add_scalar("AUC/train", train_auc, epoch)
-
-        # Validación
-        model.eval()
-        val_loss = 0.0
-        val_outputs = []
-        val_targets = []
-        with torch.no_grad():
-            for datos_val, etiquetas_val in val_loader:
-                datos_val, etiquetas_val = datos_val.to(device), etiquetas_val.to(device)
-                outputs_val = model(datos_val)
-                val_loss += criterion(outputs_val.squeeze(), etiquetas_val).item() * datos_val.size(0)
-                val_outputs.append(outputs_val.squeeze().detach().cpu().numpy())
-                val_targets.append(etiquetas_val.detach().cpu().numpy())
-
-        val_loss /= len(val_loader.dataset)
-        val_outputs = np.concatenate(val_outputs)
-        val_targets = np.concatenate(val_targets)
-        val_auc = roc_auc_score(val_targets, val_outputs)
-
-        # Registrar métricas en TensorBoard
-        writer.add_scalar("Loss/val", val_loss, epoch)
-        writer.add_scalar("AUC/val", val_auc, epoch)
-
-        # Mostrar métricas en la consola
-        #tqdm.write(f"Epoch {epoch + 1}/{num_epochs}, Train Loss: {train_loss:.4f}, Train AUC: {train_auc:.4f}, Val Loss: {val_loss:.4f}, Val AUC: {val_auc:.4f}")
-
-        if val_auc > best_val_accuracy:
-            best_val_accuracy = val_auc
-            # Guardar el modelo con el mejor accuracy hasta ahora
-            best_model = model.state_dict()
-            epochs_without_improvement = 0
-        else:
-            epochs_without_improvement += 1
-
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            # Restablecer el contador de épocas sin mejora en la pérdida
-            epochs_without_improvement = 0
-        else:
-            # Incrementar el contador de epochs sin mejora en la pérdida
-            epochs_without_improvement += 1
-
-        if epochs_without_improvement >= patience:
-            tqdm.write(f"Early stopping at epoch {epoch + 1} as there's no improvement in validation loss.")
-            break
-
-        # Actualizar el mensaje de tqdm con el mejor valor de val_accuracy hasta el momento
-        pbar.set_postfix({"Best Val Accuracy": f"{best_val_accuracy:.8f}", "Best Val Loss": f"{best_val_loss:.8f}"})
-    
-    model.load_state_dict(best_model)
-    return model, best_val_loss, best_val_accuracy
-
-def optimize_hyperparameters(datos_entrenamiento, etiquetas_entrenamiento, datos_validacion, etiquetas_validacion, hiperparametros_ranges, num_trials, num_epochs, batch_size, patience=50):
-    def objective(trial):
-        hiperparametros = {
-            'learning_rate': trial.suggest_float('learning_rate', *hiperparametros_ranges['learning_rate']),
-            'lstm_units': trial.suggest_categorical('lstm_units', hiperparametros_ranges['lstm_units']),
-            'dense_units': trial.suggest_categorical('dense_units', hiperparametros_ranges['dense_units']),
-            'dropout_rate_1': trial.suggest_categorical('dropout_rate_1', hiperparametros_ranges['dropout_rate_1']),
-            'dropout_rate_2': trial.suggest_categorical('dropout_rate_2', hiperparametros_ranges['dropout_rate_2']),
-            'num_lstm_layers': trial.suggest_categorical('num_lstm_layers', hiperparametros_ranges['num_lstm_layers']),
-            'kernel_regularizer': trial.suggest_float('kernel_regularizer', *hiperparametros_ranges['kernel_regularizer'])
-        }
-
-        model = Modelo(**hiperparametros)
+def entrenar_modelo(modelo, train_loader, val_loader, patience, batch_size, epochs, log_dir, trial):
+    if trial is not None:
+        log_dir_trial = os.path.join(log_dir, "{}-{}".format(datetime.datetime.now().strftime("%Y%m%d-%H%M%S"), trial.number))
         
-        _, _, val_accuracy = train_model(model, datos_entrenamiento, etiquetas_entrenamiento, hiperparametros, num_epochs, batch_size, patience, trial_number=trial.number)
+    else:
+        log_dir_trial = os.path.join(log_dir, "{}-{}".format(datetime.datetime.now().strftime("%Y%m%d-%H%M%S"), "FINAL"))
+        patience = 100000
         
-        # Regresa también el número del trial
-        return val_accuracy
+    train_dataset_size = train_loader.cardinality().numpy()
+    val_dataset_size = val_loader.cardinality().numpy()
+    
+    steps_per_epoch = train_dataset_size // batch_size if train_dataset_size > 0 else None
+    validation_steps = val_dataset_size // batch_size if val_dataset_size > 0 else None
+    
+    # Definir el callback de TensorBoard
+    
+    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir_trial, histogram_freq=1)
+    
+    modelo.fit(train_loader,
+               epochs=epochs,
+               steps_per_epoch=steps_per_epoch,
+               validation_data=val_loader,
+               validation_steps=validation_steps,
+               callbacks=[tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=patience), tensorboard_callback])
 
+def objetivo(trial, train_loader, val_loader, val_earlystopping_loader, hiperparametros_ranges, patience, batch_size, epochs, log_dir):
+    params = {}
+    for key, value in hiperparametros_ranges.items():
+        if isinstance(value, list):
+            params[key] = trial.suggest_categorical(key, value)
+        elif isinstance(value, tuple) and len(value) == 2:
+            params[key] = trial.suggest_float(key, value[0], value[1])
+        else:
+            raise ValueError("Invalid range format for parameter '{}': {}".format(key, value))
+
+    modelo = tf.keras.Sequential([
+        tf.keras.layers.Reshape((-1, 150), input_shape=(100, 2, 75)),
+        tf.keras.layers.Masking(mask_value=0.),
+        tf.keras.layers.LSTM(params['lstm_units'], return_sequences=True),
+        tf.keras.layers.Dropout(params['dropout_rate']),
+        tf.keras.layers.LSTM(params['lstm_units'] // 2),
+        tf.keras.layers.Dropout(params['dropout_rate']),
+        tf.keras.layers.Dense(params['dense_units'], activation='relu',
+                            kernel_regularizer=tf.keras.regularizers.l2(params['kernel_regularizer'])),
+        tf.keras.layers.Dropout(params['dropout_rate']),
+        tf.keras.layers.Dense(1, activation='sigmoid')
+    ])
+
+    opt = tf.keras.optimizers.Adam(learning_rate=params['learning_rate'])
+
+    modelo.compile(
+        optimizer=opt,
+        loss='binary_crossentropy',
+        metrics=['accuracy']
+    )
+
+    entrenar_modelo(modelo, train_loader, val_earlystopping_loader, patience, batch_size, epochs, log_dir=log_dir, trial=trial)
+
+    return modelo.evaluate(val_loader)[1]
+
+def optimizar_hiperparametros(datos_entrenamiento, etiquetas_entrenamiento, datos_validacion, etiquetas_validacion,
+                              hiperparametros_ranges, patience, batch_size, epochs, num_trials=100, log_dir="logs"):
+    
+    datos_entrenamiento = np.array(datos_entrenamiento)
+    etiquetas_entrenamiento = np.array(etiquetas_entrenamiento)
+    
+    datos_entrenamiento_early_stop, _, etiquetas_entrenamiento_early_stop, _ = train_test_split(
+        datos_entrenamiento, etiquetas_entrenamiento, test_size=0.8, random_state=42)
+       
+    print('Creando dataloaders...')
+    print('Datos entrenamiento:', datos_entrenamiento.shape)
+    print('Datos validación:', datos_validacion.shape)
+    print('Datos entrenamiento early stopping:', datos_entrenamiento_early_stop.shape)
+
+    train_loader, val_loader, val_earlystopping_loader = crear_dataloader(datos_entrenamiento, etiquetas_entrenamiento, datos_validacion, etiquetas_validacion, datos_entrenamiento_early_stop, etiquetas_entrenamiento_early_stop, batch_size)
+
+    
     study = optuna.create_study(direction='maximize')
-    study.optimize(objective, n_trials=num_trials)
+    study.optimize(lambda trial: objetivo(trial, train_loader, val_loader, val_earlystopping_loader, hiperparametros_ranges, patience, batch_size, epochs, log_dir=log_dir),
+                   n_trials=num_trials)
+
+    print('Mejores hiperparámetros:', study.best_params)
+    print('Mejor precisión de validación:', study.best_value)
 
     best_params = study.best_params
-    best_model = Modelo(**best_params)
-    best_model, best_val_loss, best_val_accuracy = train_model(best_model, datos_entrenamiento, etiquetas_entrenamiento, best_params, num_epochs, batch_size, patience)
 
-    return best_model, best_val_loss, best_val_accuracy, best_params
+    modelo_final = tf.keras.Sequential([
+        tf.keras.layers.Reshape((-1, 150), input_shape=(100, 2, 75)),
+        tf.keras.layers.Masking(mask_value=0.),
+        tf.keras.layers.LSTM(best_params['lstm_units'], return_sequences=True),
+        tf.keras.layers.Dropout(best_params['dropout_rate']),
+        tf.keras.layers.LSTM(best_params['lstm_units'] // 2),
+        tf.keras.layers.Dropout(best_params['dropout_rate']),
+        tf.keras.layers.Dense(best_params['dense_units'], activation='relu',
+                              kernel_regularizer=tf.keras.regularizers.l2(best_params['kernel_regularizer'])),
+        tf.keras.layers.Dropout(best_params['dropout_rate']),
+        tf.keras.layers.Dense(1, activation='sigmoid')
+    ])
 
+    opt_final = tf.keras.optimizers.Adam(learning_rate=best_params['learning_rate'])
+
+    modelo_final.compile(
+        optimizer=opt_final,
+        loss='binary_crossentropy',
+        metrics=['accuracy']
+    )
+    entrenar_modelo(modelo_final, train_loader, val_loader, patience, batch_size, epochs, log_dir, trial=None)
+
+    return modelo_final
