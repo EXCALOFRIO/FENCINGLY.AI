@@ -13,13 +13,9 @@ conexiones = [
 ]
 
 def dibujar_pose(pose, conexiones, ax, color='b'):
-    for i, punto in enumerate(pose):
-        if len(punto) < 3:
-            continue  # Saltar si el punto no tiene suficientes elementos
+    for punto in pose:
         x, y = punto[:2]
-        confianza = punto[2]
-
-        if confianza > 0:
+        if x != 0 and y != 0:
             ax.plot(x, y, 'o', markersize=8, color=color)
 
     for conexion in conexiones:
@@ -29,10 +25,7 @@ def dibujar_pose(pose, conexiones, ax, color='b'):
         punto_1 = pose[conexion[0]]
         punto_2 = pose[conexion[1]]
 
-        if len(punto_1) < 3 or len(punto_2) < 3:
-            continue  # Saltar si los puntos no tienen suficientes elementos
-
-        if punto_1[2] > 0 and punto_2[2] > 0:
+        if punto_1[0] != 0 and punto_1[1] != 0 and punto_2[0] != 0 and punto_2[1] != 0:
             x = [punto_1[0], punto_2[0]]
             y = [punto_1[1], punto_2[1]]
             ax.add_line(Line2D(x, y, linewidth=3, color=color))
@@ -47,12 +40,11 @@ def visualizar_tensor_poses(tensor_poses, ax):
     color_index = 0  # Índice de color actual
 
     for persona_poses in tensor_poses:
-        for i, persona in enumerate(persona_poses):
-            keypoints = persona[:75]  # Tomar solo los primeros 75 keypoints
-            dibujar_pose([(keypoints[j], keypoints[j + 1], keypoints[j + 2]) for j in range(0, len(keypoints), 3)],
-                          conexiones, ax, color=colors[color_index])
+        for persona in persona_poses:
+            keypoints = persona[:50]  # Tomar solo los primeros 50 keypoints (sin confianza)
+            dibujar_pose([(keypoints[j], keypoints[j + 1]) for j in range(0, len(keypoints), 2)],
+                         conexiones, ax, color=colors[color_index])
             color_index = (color_index + 1) % len(colors)  # Alternar entre rojo y azul
-
 
 def gif(poses):
     fig, ax = plt.subplots(figsize=(10, 8))
@@ -69,5 +61,5 @@ def gif(poses):
     gif_path = f'poses_animation_{timestamp}.gif'  # Nombre de archivo único con marca de tiempo
     imageio.mimsave(gif_path, frames, fps=5)
     plt.close(fig)  # Cerrar la figura para liberar memoria
-
+    print(f'GIF guardado en: {gif_path}')
     return gif_path
