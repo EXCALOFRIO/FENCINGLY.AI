@@ -1,7 +1,6 @@
 import random
 import tensorflow as tf
 from tensorflow.keras import mixed_precision
-import numpy as np
 
 # Enable mixed precision training
 policy = mixed_precision.Policy('mixed_float16')
@@ -173,65 +172,3 @@ def flip_poses(datos_entrenamiento, etiquetas_entrenamiento):
     
     # Devolver los datos de entrenamiento con flip aplicado y las etiquetas invertidas
     return datos_entrenamiento_trans, etiquetas_entrenamiento_trans
-
-@tf.function
-def rotar_poses(datos_entrenamiento, etiquetas_entrenamiento):
-    datos_entrenamiento_tf = tf.convert_to_tensor(datos_entrenamiento, dtype=tf.float32)
-    shape = tf.shape(datos_entrenamiento_tf)
-    num_poses = shape[0]
-    num_puntos = shape[1]
-
-    centro_x = tf.reduce_mean(datos_entrenamiento_tf[:, :, 0::2])
-    centro_y = tf.reduce_mean(datos_entrenamiento_tf[:, :, 1::2])
-
-    # Ángulo aleatorio entre -90 y 90 grados en radianes
-    angulo_rotacion = tf.random.uniform([], minval=-np.pi/2, maxval=np.pi/2)
-
-    cos_val = tf.cos(angulo_rotacion)
-    sin_val = tf.sin(angulo_rotacion)
-    matriz_rotacion = tf.reshape(tf.stack([cos_val, -sin_val, sin_val, cos_val]), [2, 2])
-
-    datos_entrenamiento_reshaped = tf.reshape(datos_entrenamiento_tf, [-1, 2])
-    centros = tf.tile([[centro_x, centro_y]], [tf.shape(datos_entrenamiento_reshaped)[0], 1])
-
-    # Crear una máscara para los puntos con coordenadas no cero
-    no_cero_mask = tf.reduce_any(datos_entrenamiento_reshaped != 0, axis=-1, keepdims=True)
-
-    # Aplicar la rotación solo a los puntos no cero
-    datos_rotados = tf.where(
-        no_cero_mask,
-        tf.matmul(datos_entrenamiento_reshaped - centros, matriz_rotacion) + centros,
-        datos_entrenamiento_reshaped
-    )
-
-    min_coords = tf.reduce_min(datos_rotados, axis=0)
-    max_coords = tf.reduce_max(datos_rotados, axis=0)
-
-    factor_escala = tf.minimum(1.0 / (max_coords - min_coords), 1.0)
-    datos_escalados = (datos_rotados - min_coords) * factor_escala
-
-    datos_entrenamiento_trans = tf.reshape(datos_escalados, tf.shape(datos_entrenamiento_tf))
-    datos_entrenamiento_trans = tf.reshape(datos_entrenamiento_trans, (num_poses, num_puntos, -1))
-
-    return datos_entrenamiento_trans, etiquetas_entrenamiento
-
-@tf.function
-def eliminar_puntos_aleatorios(datos_entrenamiento, etiquetas_entrenamiento):
-    # Convertir los datos de entrenamiento a un tensor de TensorFlow
-    datos_entrenamiento_tf = tf.convert_to_tensor(datos_entrenamiento)
-
-    # Obtener las dimensiones de los datos de entrenamiento
-    shape = tf.shape(datos_entrenamiento_tf)
-    num_poses, num_puntos, dim_punto = tf.unstack(shape)
-
-    # Generar una máscara aleatoria para cada pose y cada punto
-    mascaras = tf.random.uniform((num_poses, num_puntos, dim_punto), minval=0, maxval=1, dtype=tf.float32)
-    mascaras = tf.cast(mascaras > 0.98, tf.float32)  # Establecer entre 0 y 6 puntos a 1 (los demás serán 0)
-    num_puntos_eliminados = tf.cast(tf.reduce_sum(mascaras, axis=[1, 2]), tf.int32)  # Número de puntos eliminados por pose
-
-    # Aplicar la máscara a los datos de entrenamiento
-    datos_entrenamiento_trans = datos_entrenamiento_tf * (1 - mascaras)
-    
-    datos_entrenamiento_trans = tf.reshape(datos_entrenamiento_trans, (num_poses, num_puntos, -1))
-
-    return datos_entrenamiento_trans, etiquetas_entrenamiento

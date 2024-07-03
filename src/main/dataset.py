@@ -7,7 +7,7 @@ from tqdm import tqdm
 import tensorflow as tf
 
 class PosesDataset:
-    def __init__(self, directory, num_frames=200):
+    def __init__(self, directory, num_frames=100):
         self.data = self.load_data(directory, num_frames)
 
     def __len__(self):
@@ -16,7 +16,7 @@ class PosesDataset:
     def __getitem__(self, idx):
         return self.data[idx]
 
-    def load_data(self, directory, num_frames=200):
+    def load_data(self, directory, num_frames=100):
         data = []
         with ThreadPoolExecutor() as executor:
             for archivo_json in tqdm(os.listdir(directory), desc="Loading data"):

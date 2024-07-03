@@ -59,7 +59,7 @@ def entrenar_modelo(modelo, train_generator, val_generator, patience_accuracy, p
 
 def crear_modelo(params):
     modelo = tf.keras.Sequential([
-        tf.keras.layers.Reshape((-1, 200), input_shape=(200, 2, 50)),
+        tf.keras.layers.Reshape((-1, 100), input_shape=(100, 2, 50)),  # Cambia la capa Reshape
         tf.keras.layers.Masking(mask_value=0.),
         tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(params['lstm_units'], return_sequences=True, kernel_regularizer=get_regularizer(params['regularization_type'], params['regularization']))),
         tf.keras.layers.Dropout(params['dropout_rate_1']),
@@ -106,7 +106,7 @@ def objetivo(trial, datos_entrenamiento, etiquetas_entrenamiento, datos_validaci
             raise ValueError("Invalid range format for parameter '{}': {}".format(key, value))
 
     # Add transformation_prob as a suggested parameter
-    params['transformation_prob'] = trial.suggest_float('transformation_prob', 0.0, 0.5)
+    params['transformation_prob'] = trial.suggest_float('transformation_prob', 0.0, 1.0)
 
     modelo = crear_modelo(params)
 

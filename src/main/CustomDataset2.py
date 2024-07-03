@@ -49,7 +49,7 @@ class CustomDataGenerator2(Sequence):
             np.random.shuffle(self.indices)
 
 def crear_dataloader2(datos_entrenamiento, etiquetas_entrenamiento, datos_validacion, etiquetas_validacion, batch_size, transformation_prob=0.7):
-    transformaciones = [desplazar_posesY, flip_poses, transformacion_zoom, rotar_poses, eliminar_puntos_aleatorios]
+    transformaciones = [desplazar_posesY, flip_poses, transformacion_zoom, desplazar_posesY ]
     train_generator = CustomDataGenerator2(datos_entrenamiento, etiquetas_entrenamiento, batch_size, shuffle=True, transformations=transformaciones, transformation_prob=transformation_prob)
     val_generator = CustomDataGenerator2(datos_validacion, etiquetas_validacion, batch_size, shuffle=False)
     return train_generator, val_generator
