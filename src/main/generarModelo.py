@@ -1,8 +1,7 @@
 import numpy as np
 import optuna
 import tensorflow as tf
-from sklearn.model_selection import KFold
-from sklearn.metrics import accuracy_score, roc_auc_score, f1_score
+from sklearn.model_selection import train_test_split
 from CustomDataset import *
 from CustomDataset2 import *
 import datetime
@@ -42,7 +41,8 @@ class CustomEarlyStopping(tf.keras.callbacks.Callback):
         if self.wait_accuracy >= self.patience_accuracy or self.wait_loss >= self.patience_loss:
             self.model.stop_training = True
 
-def entrenar_modelo(modelo, train_generator, val_generator, patience_accuracy, patience_loss, epochs, log_dir, trial):
+
+def entrenar_modelo(modelo, train_generator, val_generator, patience_accuracy, patience_loss, epochs, log_dir, trial=None):
     log_dir_trial = os.path.join(log_dir, "{}-{}".format(datetime.datetime.now().strftime("%Y%m%d-%H%M%S"), trial.number if trial is not None else "FINAL"))
 
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir_trial, histogram_freq=1)
@@ -57,9 +57,10 @@ def entrenar_modelo(modelo, train_generator, val_generator, patience_accuracy, p
 
     return history
 
+
 def crear_modelo(params):
-    modelo = tf.keras.Sequential([
-        tf.keras.layers.Reshape((-1, 100), input_shape=(100, 2, 50)),  # Cambia la capa Reshape
+    model = tf.keras.Sequential([
+        tf.keras.layers.Reshape((-1, 100), input_shape=(100, 2, 50)),
         tf.keras.layers.Masking(mask_value=0.),
         tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(params['lstm_units'], return_sequences=True, kernel_regularizer=get_regularizer(params['regularization_type'], params['regularization']))),
         tf.keras.layers.Dropout(params['dropout_rate_1']),
@@ -67,7 +68,7 @@ def crear_modelo(params):
         tf.keras.layers.Dropout(params['dropout_rate_2']),
         tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(params['lstm_units'], kernel_regularizer=get_regularizer(params['regularization_type'], params['regularization']))),
         tf.keras.layers.Dropout(params['dropout_rate_3']),
-        tf.keras.layers.Dense(params['dense_units'], activation=params['activation'] if params['activation'] != 'leaky_relu' else LeakyReLU(alpha=0.01), kernel_regularizer=get_regularizer(params['regularization_type'], params['regularization'])),
+        tf.keras.layers.Dense(params['dense_units'], activation=LeakyReLU(alpha=0.01) if params['activation'] == 'leaky_relu' else params['activation'], kernel_regularizer=get_regularizer(params['regularization_type'], params['regularization'])),
         tf.keras.layers.Dropout(params['dropout_rate_4']),
         tf.keras.layers.Dense(1, activation='sigmoid')
     ])
@@ -76,14 +77,21 @@ def crear_modelo(params):
         opt = tf.keras.optimizers.Adam(learning_rate=params['learning_rate'])
     elif params['optimizer'] == 'SGD':
         opt = tf.keras.optimizers.SGD(learning_rate=params['learning_rate'])
+    elif params['optimizer'] == 'Adagrad':
+        opt = tf.keras.optimizers.Adagrad(learning_rate=params['learning_rate'])
+    elif params['optimizer'] == 'Adadelta':
+        opt = tf.keras.optimizers.Adadelta(learning_rate=params['learning_rate'])
+    else:
+        raise ValueError("Unsupported optimizer: {}".format(params['optimizer']))
 
-    modelo.compile(
+    model.compile(
         optimizer=opt,
         loss=tf.keras.losses.BinaryCrossentropy(from_logits=False),
         metrics=['accuracy', tf.keras.metrics.AUC(name='auc'), F1Score()]
     )
 
-    return modelo
+    return model
+
 
 def get_regularizer(regularization_type, regularization_rate):
     if regularization_type == 'l1':
@@ -92,6 +100,7 @@ def get_regularizer(regularization_type, regularization_rate):
         return tf.keras.regularizers.l2(regularization_rate)
     else:
         raise ValueError("Invalid regularization type: {}".format(regularization_type))
+
 
 def objetivo(trial, datos_entrenamiento, etiquetas_entrenamiento, datos_validacion, etiquetas_validacion, hiperparametros_ranges, patience_accuracy, patience_loss, batch_size, epochs, log_dir):
     params = {}
@@ -105,21 +114,19 @@ def objetivo(trial, datos_entrenamiento, etiquetas_entrenamiento, datos_validaci
         else:
             raise ValueError("Invalid range format for parameter '{}': {}".format(key, value))
 
-    # Add transformation_prob as a suggested parameter
     params['transformation_prob'] = trial.suggest_float('transformation_prob', 0.0, 1.0)
 
-    modelo = crear_modelo(params)
+    model = crear_modelo(params)
 
-    # Ensure that transformation_prob is used consistently
     train_generator, val_generator = crear_dataloader2(datos_entrenamiento, etiquetas_entrenamiento, datos_validacion, etiquetas_validacion, batch_size, transformation_prob=params['transformation_prob'])
 
-    history = entrenar_modelo(modelo, train_generator, val_generator, patience_accuracy, patience_loss, epochs, log_dir=log_dir, trial=trial)
+    history = entrenar_modelo(model, train_generator, val_generator, patience_accuracy, patience_loss, epochs, log_dir=log_dir, trial=trial)
 
     val_accuracy = history.history.get('val_accuracy', [0])[-1]
     val_auc = history.history.get('val_auc', [0])[-1]
-    val_f1 = history.history.get('val_f1_score', [0])[-1]  # Añadir el f1_score
+    val_f1 = history.history.get('val_f1_score', [0])[-1]
 
-    return val_accuracy  # Usar F1 score para la optimización de hiperparámetros
+    return val_f1
 
 
 def optimizar_hiperparametros(datos_entrenamiento, etiquetas_entrenamiento, datos_validacion, etiquetas_validacion, hiperparametros_ranges, patience_accuracy, patience_loss, batch_size, epochs, num_trials=100, log_dir="logs"):
@@ -134,13 +141,13 @@ def optimizar_hiperparametros(datos_entrenamiento, etiquetas_entrenamiento, dato
 
     best_params = study.best_params
 
-    modelo_final = crear_modelo(best_params)
+    model_final = crear_modelo(best_params)
 
     train_generator, val_generator = crear_dataloader2(datos_entrenamiento, etiquetas_entrenamiento, datos_validacion, etiquetas_validacion, batch_size, transformation_prob=best_params['transformation_prob'])
 
-    entrenar_modelo(modelo_final, train_generator, val_generator, patience_accuracy, patience_loss, epochs, log_dir, trial=None)
+    entrenar_modelo(model_final, train_generator, val_generator, patience_accuracy, patience_loss, epochs, log_dir, trial=None)
 
-    return modelo_final
+    return best_params
 
 
 class F1Score(tf.keras.metrics.Metric):
@@ -161,11 +168,12 @@ class F1Score(tf.keras.metrics.Metric):
         self.false_negatives.assign_add(tf.reduce_sum(tf.cast(y_true & ~y_pred, tf.float32)))
 
     def result(self):
-        precision = self.true_positives / (self.true_positives + self.false_positives + 1e-9)
-        recall = self.true_positives / (self.true_positives + self.false_negatives + 1e-9)
-        f1_score = 2 * (precision * recall) / (precision + recall + 1e-9)
-        return f1_score
+        precision = self.true_positives / (self.true_positives + self.false_positives + tf.keras.backend.epsilon())
+        recall = self.true_positives / (self.true_positives + self.false_negatives + tf.keras.backend.epsilon())
+        return 2 * ((precision * recall) / (precision + recall + tf.keras.backend.epsilon()))
 
-    def reset_state(self):
-        for v in self.variables:
-            v.assign(0)
+    def reset_states(self):
+        self.true_positives.assign(0)
+        self.false_positives.assign(0)
+        self.true_negatives.assign(0)
+        self.false_negatives.assign(0)
